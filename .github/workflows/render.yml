@@ -1,0 +1,58 @@
+name: render-reel
+on:
+  workflow_dispatch:
+    inputs:
+      id:
+        description: "output file id (letters, digits, - _)"
+        required: true
+      payload:
+        description: "reel JSON"
+        required: true
+permissions:
+  contents: write
+concurrency:
+  group: render
+  cancel-in-progress: false
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Validate id
+        env:
+          ID: ${{ inputs.id }}
+        run: |
+          echo "$ID" | grep -Eq '^[A-Za-z0-9_-]{1,60}$' || { echo "bad id"; exit 1; }
+      - name: Install
+        run: |
+          cd render && npm ci
+          command -v ffmpeg >/dev/null || sudo apt-get install -y ffmpeg
+      - name: Fetch brand logo
+        run: |
+          mkdir -p assets
+          curl -fsSL -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124 Safari/537.36" \
+            -o assets/logo.png "https://seedtech-sd.com/wp-content/uploads/2023/04/seedtech-LOGO3.png"
+          file assets/logo.png
+      - name: Render
+        env:
+          PAYLOAD: ${{ inputs.payload }}
+          ID: ${{ inputs.id }}
+        run: |
+          mkdir -p out
+          node render/render.mjs - "out/${ID}.mp4"
+      - name: Commit video
+        env:
+          ID: ${{ inputs.id }}
+        run: |
+          git config user.name "seedtech-reels-bot"
+          git config user.email "bot@users.noreply.github.com"
+          # keep only the 20 newest videos
+          ls -t out/*.mp4 | tail -n +21 | xargs -r git rm -q --cached -f || true
+          ls -t out/*.mp4 | tail -n +21 | xargs -r rm -f
+          git add out
+          git commit -m "render ${ID}"
+          for i in 1 2 3; do git pull --rebase origin main && git push origin HEAD:main && break || sleep 5; done
