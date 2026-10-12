@@ -26,6 +26,12 @@ function findChrome() {
   return undefined; // let playwright decide
 }
 
+if (payload.kind === 'clip') {
+  const { runClip } = await import('./clip.mjs');
+  await runClip({ payload, out, here, FFMPEG, findChrome, flag });
+  process.exit(0);
+}
+
 const browser = await chromium.launch({ executablePath: findChrome(), args: ['--no-sandbox', '--disable-dev-shm-usage', '--font-render-hinting=none', '--allow-file-access-from-files'] });
 const page = await browser.newPage({ viewport: { width: 1080, height: 1920 }, deviceScaleFactor: 1 });
 page.on('pageerror', e => console.error('PAGEERROR', e.message));

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ar" dir="rtl"><head><meta charset="utf-8">
+<style>
+@font-face{font-family:Cairo;font-weight:600;src:url(../fonts/cairo-arabic-600-normal.woff2) format('woff2');unicode-range:U+0600-06FF,U+0750-077F,U+08A0-08FF,U+FB50-FDFF,U+FE70-FEFF}
+@font-face{font-family:Cairo;font-weight:900;src:url(../fonts/cairo-arabic-900-normal.woff2) format('woff2');unicode-range:U+0600-06FF,U+0750-077F,U+08A0-08FF,U+FB50-FDFF,U+FE70-FEFF}
+@font-face{font-family:Cairo;font-weight:600;src:url(../fonts/cairo-latin-600-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+2000-206F}
+@font-face{font-family:Cairo;font-weight:900;src:url(../fonts/cairo-latin-900-normal.woff2) format('woff2');unicode-range:U+0000-00FF,U+2000-206F}
+:root{--g:#1B5E20}
+*{box-sizing:border-box}
+html,body{margin:0;width:1080px;height:1920px;overflow:hidden;background:transparent;font-family:Cairo,sans-serif}
+.shade{position:absolute;left:0;top:1280px;width:1080px;height:640px;background:linear-gradient(to bottom,rgba(0,0,0,0) 0%,rgba(0,0,0,.35) 45%,rgba(0,0,0,.7) 100%)}
+.title{position:absolute;left:50px;right:50px;bottom:300px;text-align:center;color:#fff;font-weight:900;line-height:1.3;
+ text-shadow:0 3px 6px rgba(0,0,0,.85),0 0 18px rgba(0,0,0,.7),0 0 4px rgba(0,0,0,.9);-webkit-text-stroke:2px rgba(0,0,0,.45);paint-order:stroke fill}
+.ft{position:absolute;left:0;bottom:0;width:1080px;height:250px}
+.lg{position:absolute;left:44px;top:34px;width:230px;height:150px;border-radius:22px;background:#fff;padding:12px;object-fit:contain}
+.sl{position:absolute;left:44px;width:230px;top:196px;text-align:center;font-weight:900;font-size:14px;letter-spacing:1.2px;color:#fff;direction:ltr;text-shadow:0 2px 4px rgba(0,0,0,.8)}
+.ln{position:absolute;left:310px;right:44px;top:30px;height:4px;border-radius:2px;background:rgba(255,255,255,.85)}
+.ct{position:absolute;left:310px;right:44px;top:58px;display:flex;justify-content:space-between;direction:ltr}
+.cl,.cr{display:flex;flex-direction:column;gap:24px}.cl{align-items:flex-end}.cr{align-items:flex-start}
+.ic{display:flex;gap:8px}
+.ci{display:inline-flex;width:44px;height:44px;border-radius:50%;background:var(--g);border:2px solid #fff;align-items:center;justify-content:center;flex:none}
+.tx{font-weight:900;font-size:33px;color:#fff;line-height:1;text-shadow:0 2px 5px rgba(0,0,0,.85)}
+.rw{display:flex;align-items:center;gap:10px}
+</style></head><body>
+<div class="shade"></div><div class="title" id="t"></div><div class="ft" id="ft"></div>
+<script>
+const SVG={
+yt:'<svg width="26" height="26" viewBox="0 0 24 24" fill="#fff"><path d="M21.6 7.2a2.5 2.5 0 0 0-1.8-1.8C18.3 5 12 5 12 5s-6.3 0-7.8.4A2.5 2.5 0 0 0 2.4 7.2 26 26 0 0 0 2 12a26 26 0 0 0 .4 4.8 2.5 2.5 0 0 0 1.8 1.8C5.7 19 12 19 12 19s6.3 0 7.8-.4a2.5 2.5 0 0 0 1.8-1.8A26 26 0 0 0 22 12a26 26 0 0 0-.4-4.8zM10 15V9l5.2 3z"/></svg>',
+fb:'<svg width="26" height="26" viewBox="0 0 24 24" fill="#fff"><path d="M14 8h3V4.5h-3C11.5 4.5 10 6 10 8.5V11H7.5v3.5H10V21h3.5v-6.5h2.7l.5-3.5h-3.2V9c0-.6.4-1 1-1z"/></svg>',
+ig:'<svg width="26" height="26" viewBox="0 0 24 24" fill="#fff"><rect x="4" y="4" width="16" height="16" rx="4.5" fill="none" stroke="#fff" stroke-width="2"/><circle cx="12" cy="12" r="3.6" fill="none" stroke="#fff" stroke-width="2"/><circle cx="17" cy="7" r="1.2"/></svg>',
+li:'<svg width="26" height="26" viewBox="0 0 24 24" fill="#fff"><path d="M6.5 9.5h-3V20h3zM5 4.5a1.8 1.8 0 1 0 0 3.6 1.8 1.8 0 0 0 0-3.6zM20.5 20v-6c0-3-1.6-4.7-4-4.7-1.5 0-2.5.8-3 1.6V9.5h-3V20h3v-5.6c0-1.5.8-2.4 2-2.4s1.9.9 1.9 2.4V20z"/></svg>',
+wa:'<svg width="26" height="26" viewBox="0 0 24 24" fill="#fff"><path d="M12 3a9 9 0 0 0-7.7 13.6L3 21l4.5-1.2A9 9 0 1 0 12 3zm4.6 12.4c-.2.5-1.1 1-1.6 1-.4.1-1 .1-1.6-.1-3-1.2-4.9-4.2-5.1-4.4-.1-.2-1.2-1.6-1.2-3s.7-2.1 1-2.4c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.5l.8 2c.1.2.1.4 0 .5l-.4.6c-.1.2-.3.3-.1.6.2.3.8 1.3 1.7 2.1 1.1 1 2.1 1.3 2.4 1.5.3.1.5.1.6-.1l.9-1.1c.2-.3.4-.2.6-.1l1.9.9c.3.1.5.2.5.3.1.2.1.7-.2 1.2z"/></svg>',
+ph:'<svg width="26" height="26" viewBox="0 0 24 24" fill="#fff"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.6 21 3 13.4 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1z"/></svg>'};
+const ci=k=>'<span class="ci">'+SVG[k]+'</span>';
+window.setup=async function(P){
+  const t=document.getElementById('t');t.textContent=P.title_ar||'';
+  if(!P.title_ar)t.style.display='none';
+  let s=84;t.style.fontSize=s+'px';
+  while((t.scrollHeight>t.clientHeight*0+ 3*s*1.3+4)&&s>44){s-=4;t.style.fontSize=s+'px'}
+  document.getElementById('ft').innerHTML='<img class="lg" src="../assets/logo.png"><div class="sl">VEGETABLES SEEDS FOR SUDAN</div><div class="ln"></div><div class="ct"><div class="cr"><div class="ic">'+ci('yt')+ci('fb')+ci('ig')+ci('li')+'</div><div class="tx">seedtech.sudan</div></div><div class="cl"><div class="rw">'+ci('wa')+'<div class="tx">0900408009</div></div><div class="rw">'+ci('ph')+'<div class="tx">0900905724</div></div></div></div>';
+  await document.fonts.ready;
+  await Promise.all([...document.images].map(i=>i.complete?1:new Promise(r=>{i.onload=i.onerror=r})));
+};
+</script></body></html>
