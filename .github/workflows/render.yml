@@ -52,8 +52,9 @@ jobs:
           # keep only the 20 newest videos
           ls -t out/*.mp4 | tail -n +21 | xargs -r git rm -q --cached -f || true
           ls -t out/*.mp4 | tail -n +21 | xargs -r rm -f
-          git rm -q -r --cached -f inbox 2>/dev/null || true
-          rm -rf inbox
+          # keep only the 5 newest inbox clips (needed for edit re-renders)
+          ls -t inbox/*.mp4 2>/dev/null | tail -n +6 | xargs -r git rm -q --cached -f || true
+          ls -t inbox/*.mp4 2>/dev/null | tail -n +6 | xargs -r rm -f
           git add -A out
           git commit -m "render ${ID}"
           for i in 1 2 3; do git pull --rebase origin main && git push origin HEAD:main && break || sleep 5; done

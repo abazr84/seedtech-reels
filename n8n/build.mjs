@@ -101,7 +101,7 @@ link('write_reel', 'build_payload');
 add('dispatch', 'n8n-nodes-base.httpRequest', 4.2, { method: 'POST', url: `https://api.github.com/repos/${REPO}/actions/workflows/render.yml/dispatches`, authentication: 'genericCredentialType', genericAuthType: 'httpHeaderAuth', sendHeaders: true, headerParameters: { parameters: [{ name: 'Accept', value: 'application/vnd.github+json' }, { name: 'User-Agent', value: 'seedtech-n8n' }, { name: 'X-GitHub-Api-Version', value: '2022-11-28' }] }, sendBody: true, contentType: 'json', specifyBody: 'json', jsonBody: "={{ JSON.stringify({ref:'main',inputs:{id:$json.id,payload:JSON.stringify($json.payload)} }) }}", options: { response: { response: { fullResponse: true, neverError: true } } } }, { credentials: GH, retryOnFail: true, maxTries: 2, waitBetweenTries: 3000 }, [1600, 300]);
 link('build_payload', 'dispatch');
 
-const WAIT = `const j=$('build_payload').first().json;
+const WAIT = `const j=$getWorkflowStaticData('global').job;if(!j||!j.id)throw new Error('no job in progress');
 const d=$input.first().json;
 if(d.statusCode&&d.statusCode>=300)throw new Error('GitHub dispatch failed: '+d.statusCode+' '+JSON.stringify(d.body).slice(0,300));
 const start=Date.now()-20000;
@@ -130,8 +130,16 @@ evo('send_help', 'sendText', "{number:'" + ADMIN + "',text:'للموافقة ا�
 link('send_caption', 'send_help');
 
 // ---------- approval ----------
-const PARSE = `const t=String(($input.first().json.body&&$input.first().json.body.text)||'').replace(/[\\u064B-\\u0652\\u0640]/g,'').replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/\\s+/g,' ').trim();
+const PARSE = `const bd=$input.first().json.body||{};const raw=String(bd.text||'');
+const t=raw.replace(/[\\u064B-\\u0652\\u0640]/g,'').replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/\\s+/g,' ').trim();
 if(!/^ريل/.test(t))return [{json:{handled:false,cmd:'none'}}];
+if(bd.clip&&bd.clip.id){
+ let d=raw.replace(/^\\s*ريل[\\u064B-\\u0652]*\\s*[:：\\-]?\\s*/,'').trim();
+ const music=/موسيق[ىي]/.test(d);
+ d=d.replace(/(مع\\s+)?موسيق[ىي]/g,'').replace(/\\s+/g,' ').trim();
+ if(d.length<3)return [{json:{handled:true,cmd:'help',kind:'',note:''}}];
+ return [{json:{handled:true,cmd:'clip',clipId:bd.clip.id,desc:d,music,rid:'clip-'+Date.now().toString(36)}}];
+}
 const rest=t.replace(/^ريل\\s*/,'');
 let cmd='help',kind='',note='';
 if(rest===''||/^(جديد|اقتراح)$/.test(rest))cmd='suggest';
@@ -146,24 +154,25 @@ link('Approval webhook', 'parse_rcmd');
 add('respond_handled', 'n8n-nodes-base.respondToWebhook', 1.1, { respondWith: 'json', responseBody: '={{ JSON.stringify({handled:$json.handled}) }}', options: {} }, {}, [560, 700]);
 link('parse_rcmd', 'respond_handled');
 const sw = (key) => ({ conditions: { options: { caseSensitive: true, leftValue: '', typeValidation: 'strict', version: 2 }, conditions: [{ id: crypto.randomUUID(), leftValue: '={{ $("parse_rcmd").first().json.cmd }}', rightValue: key, operator: { type: 'string', operation: 'equals' } }], combinator: 'and' }, renameOutput: true, outputKey: key });
-add('Switch', 'n8n-nodes-base.switch', 3.2, { rules: { values: ['suggest', 'publish', 'cancel', 'edit', 'help'].map(sw) }, options: {} }, {}, [820, 700]);
+add('Switch', 'n8n-nodes-base.switch', 3.2, { rules: { values: ['suggest', 'publish', 'cancel', 'edit', 'help', 'clip'].map(sw) }, options: {} }, {}, [820, 700]);
 link('respond_handled', 'Switch');
 // suggest -> pick_topic (reads kind from parse_rcmd)
 code('suggest_in', "const c=$('parse_rcmd').first().json;return [{json:{kind:c.kind}}];", [1080, 560]);
 link('Switch', 'suggest_in', 0); link('suggest_in', 'pick_topic');
 // edit
 code('edit_input', `const sd=$getWorkflowStaticData('global');const p=sd.pending;const c=$('parse_rcmd').first().json;
+if(p&&p.kind==='clip'){if(!c.note)return [{json:{noPending:true,msg:'اكتب التعديل بعد النقطتين، مثال: ريل تعديل: اختصر العنوان'}}];return [{json:{isClip:true,note:c.note}}];}
 if(!p||!p.slug)return [{json:{noPending:true,msg:'ما في ريل معلق للتعديل. اكتب "ريل" لاقتراح جديد.'}}];
 if(!c.note)return [{json:{noPending:true,msg:'اكتب التعديل بعد النقطتين، مثال: ريل تعديل: اختصر النص'}}];
 return [{json:{slug:p.slug,kind:p.kind,note:c.note,prevScript:p.prevScript||''}}];`, [1080, 840]);
 link('Switch', 'edit_input', 3);
 add('edit_ok?', 'n8n-nodes-base.if', 2, { conditions: { options: { caseSensitive: true, leftValue: '', typeValidation: 'loose', version: 2 }, conditions: [{ id: crypto.randomUUID(), leftValue: '={{ $json.noPending }}', rightValue: '', operator: { type: 'boolean', operation: 'true', singleValue: true } }], combinator: 'and' }, options: {} }, {}, [1340, 840]);
 link('edit_input', 'edit_ok?');
-link('edit_ok?', 'get_data', 1);
+link('edit_ok?', 'is_clip?', 1);
 // cancel
 code('cancel_r', `const sd=$getWorkflowStaticData('global');const had=!!(sd.pending&&sd.pending.id);sd.pending=null;return [{json:{msg:had?'🗑️ تم إلغاء الريل المقترح.':'ما في ريل معلق.'}}];`, [1080, 980]);
 link('Switch', 'cancel_r', 2);
-code('help_r', `return [{json:{msg:'أوامر الريلز:\\n• ريل — اقتراح ريل جديد\\n• ريل مرض / ريل صنف — حسب النوع\\n• ريل نشر\\n• ريل تعديل: (ملاحظتك)\\n• ريل إلغاء'}}];`, [1080, 1120]);
+code('help_r', `return [{json:{msg:'أوامر الريلز:\\n• ريل — اقتراح ريل جديد\\n• ريل مرض / ريل صنف — حسب النوع\\n• ريل نشر\\n• ريل تعديل: (ملاحظتك)\\n• ريل إلغاء\\n\\n🎥 لعمل ريل من فيديوك: أرسل الفيديو مع التعليق\\nريل: (وصف الفيديو)\\nوأضف كلمة موسيقى لو عايز موسيقى خلفية.'}}];`, [1080, 1120]);
 link('Switch', 'help_r', 4);
 evo('send_reply', 'sendText', "{number:'" + ADMIN + "',text:$json.msg}", [2900, 840]);
 link('cancel_r', 'send_reply'); link('help_r', 'send_reply'); link('edit_ok?', 'send_reply', 0);
@@ -224,6 +233,55 @@ let msg=(fb.ok?'✅ نُشر الريل على فيسبوك ('+c.pageName+')':'�
 if(!fb.ok&&!ig.ok)msg+='\\nالريل ما زال بانتظارك — ردّ "ريل نشر" بعد معالجة الخطأ.';
 return [{json:{msg}}];`, [2380, 1260]);
 link('ig_reel', 'done_r'); link('done_r', 'send_reply');
+
+
+// ---------- clip: owner's own video -> branded reel ----------
+const SYS_CLIP = `أنت كاتب محتوى لشركة سيدتك (SEEDTECH Sudan) لبذور الخضروات في السودان. أرسل المالك فيديو مع وصفه، وسيُنشر كريل.
+اكتب بالاعتماد على وصف المالك فقط؛ ممنوع إضافة حقائق أو أرقام أو أسماء أصناف أو أسعار أو وعود غير مذكورة فيه.
+المخرج: JSON صالح فقط بلا شرح ولا markdown: {"title":"...","caption":"..."}
+1) title: عنوان عربي بسيط وجذاب من 3 إلى 7 كلمات، بلا إيموجي ولا نقطة في آخره (سيظهر مكتوباً على الفيديو).
+2) caption: نص المنشور المرافق، من سطرين إلى أربعة أسطر قصيرة بلهجة سودانية بسيطة قريبة من الفصحى، يجوز إيموجي أو اثنان، ثم سطر أخير فيه من 3 إلى 5 هاشتاقات مناسبة (#سيدتك مثلاً). لا تذكر أرقام الهواتف ولا الموقع (تُضاف تلقائياً).
+3) إذا وُجدت «ملاحظة التعديل» فعدّل النص السابق بموجبها فقط وأبقِ الباقي.`;
+add('clip_ack', 'n8n-nodes-base.httpRequest', 4.2, { method: 'POST', url: 'https://evo.agraxis.com/message/sendText/abazr_whatsapp', authentication: 'genericCredentialType', genericAuthType: 'httpHeaderAuth', sendBody: true, contentType: 'json', specifyBody: 'json', jsonBody: "={{ JSON.stringify({number:'" + ADMIN + "',text:'⏳ استلمت الفيديو، جاري تجهيز الريل (دقيقتين تقريباً)...'}) }}", options: {} }, { credentials: EVO }, [1080, 1400]);
+link('Switch', 'clip_ack', 5);
+add('get_clip', 'n8n-nodes-base.httpRequest', 4.2, { method: 'POST', url: 'https://evo.agraxis.com/chat/getBase64FromMediaMessage/abazr_whatsapp', authentication: 'genericCredentialType', genericAuthType: 'httpHeaderAuth', sendBody: true, contentType: 'json', specifyBody: 'json', jsonBody: "={{ JSON.stringify({ message: { key: { id: $('parse_rcmd').first().json.clipId } } }) }}", options: { timeout: 180000 } }, { credentials: EVO }, [1340, 1400]);
+link('clip_ack', 'get_clip');
+add('put_inbox', 'n8n-nodes-base.httpRequest', 4.2, { method: 'PUT', url: "={{ 'https://api.github.com/repos/" + REPO + "/contents/inbox/' + $('parse_rcmd').first().json.rid + '.mp4' }}", authentication: 'genericCredentialType', genericAuthType: 'httpHeaderAuth', sendHeaders: true, headerParameters: { parameters: [{ name: 'Accept', value: 'application/vnd.github+json' }, { name: 'User-Agent', value: 'seedtech-n8n' }] }, sendBody: true, contentType: 'json', specifyBody: 'json', jsonBody: "={{ JSON.stringify({message:'inbox clip',branch:'main',content:String($json.base64||'').replace(/^data:[^,]*,/,'')}) }}", options: { timeout: 180000, response: { response: { fullResponse: true, neverError: true } } } }, { credentials: GH }, [1600, 1400]);
+link('get_clip', 'put_inbox');
+code('check_inbox', `const r=$input.first().json;
+if(r.statusCode&&r.statusCode>=300)throw new Error('تعذر حفظ الفيديو ('+r.statusCode+') '+JSON.stringify(r.body).slice(0,200));
+return [{json:{ok:true}}];`, [1860, 1400]);
+link('put_inbox', 'check_inbox');
+code('clip_prep', `let e=null;try{e=$('edit_input').first().json}catch(x){}
+const sd=$getWorkflowStaticData('global');
+if(e&&e.isClip){
+ const p=sd.pending||{};const note=e.note;
+ const music=/بدون\\s*موسيق/.test(note)?false:(/موسيق/.test(note)?true:!!(p.payload&&p.payload.music));
+ return [{json:{id:'clip-'+Date.now().toString(36),src:p.payload.src,desc:p.desc||'',music,note,prev:JSON.stringify({title:p.name,caption:p.captionAi||''})}}];
+}
+const c=$('parse_rcmd').first().json;
+return [{json:{id:c.rid,src:'inbox/'+c.rid+'.mp4',desc:c.desc,music:!!c.music,note:'',prev:''}}];`, [2120, 1400]);
+link('check_inbox', 'clip_prep');
+add('is_clip?', 'n8n-nodes-base.if', 2, { conditions: { options: { caseSensitive: true, leftValue: '', typeValidation: 'loose', version: 2 }, conditions: [{ id: crypto.randomUUID(), leftValue: '={{ $json.isClip }}', rightValue: '', operator: { type: 'boolean', operation: 'true', singleValue: true } }], combinator: 'and' }, options: {} }, {}, [1600, 840]);
+link('is_clip?', 'clip_prep', 0); link('is_clip?', 'get_data', 1);
+const CLIP_TEXT = "={{ 'وصف المالك للفيديو: '+$json.desc+($json.note?('\\n\\nالنص السابق:\\n'+$json.prev+'\\n\\nملاحظة التعديل: '+$json.note):'') }}";
+add('write_clip', '@n8n/n8n-nodes-langchain.agent', 2.2, { promptType: 'define', text: CLIP_TEXT, hasOutputParser: false, needsFallback: false, options: { systemMessage: SYS_CLIP } }, {}, [2380, 1400]);
+add('DeepSeek Chat Model 2', '@n8n/n8n-nodes-langchain.lmChatDeepSeek', 1, { model: 'deepseek-v4-pro', options: {} }, { credentials: DSC }, [2380, 1600]);
+link('clip_prep', 'write_clip'); link('DeepSeek Chat Model 2', 'write_clip', 0, 'ai_languageModel');
+code('build_clip', `const c=$('clip_prep').first().json;
+const out=String($input.first().json.output||$input.first().json.text||'');
+const mm=out.match(/\\{[\\s\\S]*\\}/);
+if(!mm)throw new Error('AI did not return JSON: '+out.slice(0,200));
+let a;try{a=JSON.parse(mm[0]);}catch(e){throw new Error('Bad JSON from AI: '+mm[0].slice(0,300));}
+const title=String(a.title||c.desc).replace(/[\\r\\n]+/g,' ').trim().slice(0,90);
+const payload={id:c.id,kind:'clip',src:c.src,title_ar:title,music:!!c.music};
+const tail='\\n\\n📞 للاستفسار والطلب: 0900408009 — 0900905724\\n🌐 seedtech-sd.com';
+const capAi=String(a.caption||'').trim();
+const caption=capAi+tail;
+const sd=$getWorkflowStaticData('global');
+sd.job={id:c.id,slug:'',kind:'clip',name:title,desc:c.desc,captionAi:capAi,caption,payload,ts:Date.now()};
+return [{json:{id:c.id,payload,caption,name:title}}];`, [2640, 1400]);
+link('write_clip', 'build_clip'); link('build_clip', 'dispatch');
 
 // ---------- errors ----------
 add('Error Trigger', 'n8n-nodes-base.errorTrigger', 1, {}, {}, [0, 1400]);
