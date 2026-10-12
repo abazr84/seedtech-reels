@@ -41,12 +41,6 @@ jobs:
         run: |
           cd render && npm ci
           command -v ffmpeg >/dev/null || sudo apt-get install -y ffmpeg
-      - name: Fetch brand logo
-        run: |
-          mkdir -p assets
-          curl -fsSL -A "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124 Safari/537.36" \
-            -o assets/logo.png "https://seedtech-sd.com/wp-content/uploads/2023/04/seedtech-LOGO3.png"
-          file assets/logo.png
       - name: Render
         run: |
           mkdir -p out
