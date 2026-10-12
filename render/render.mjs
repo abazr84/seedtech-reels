@@ -45,11 +45,22 @@ const secs = (total / 1000 + 0.2).toFixed(2);
 const audio = path.join(path.dirname(path.resolve(out)), `.${path.basename(out)}.m4a`);
 const useMusic = payload.music !== false;
 if (useMusic) {
-  // soft warm pad: Am(add9) chord with slow tremolo + light echo, fades in/out
-  const freqs = [110, 164.81, 220, 261.63, 329.63, 493.88];
-  const inputs = freqs.flatMap(f => ['-f', 'lavfi', '-t', secs, '-i', `sine=frequency=${f}:sample_rate=44100`]);
-  const mix = freqs.map((_, i) => `[${i}:a]`).join('') + `amix=inputs=${freqs.length}:normalize=0,volume=0.8,alimiter=limit=0.7,tremolo=f=0.18:d=0.5,lowpass=f=1400,aecho=0.8:0.6:420|760:0.35|0.22,afade=t=in:d=1.6,afade=t=out:st=${(total / 1000 - 1.6).toFixed(2)}:d=1.8[a]`;
-  execSync([`"${FFMPEG}"`, '-y', '-loglevel', 'error', ...inputs, '-filter_complex', `"${mix}"`, '-map', '"[a]"', '-c:a', 'aac', '-b:a', '128k', `"${audio}"`].join(' '), { stdio: 'inherit' });
+  const mdir = path.join(here, '..', 'music');
+  const tracks = fs.existsSync(mdir) ? fs.readdirSync(mdir).filter(f => /\.(mp3|m4a|aac|wav|ogg)$/i.test(f)).sort() : [];
+  if (tracks.length) {
+    // pick one uploaded track per video (deterministic from id, so different videos rotate through tracks)
+    const h = [...String(payload.id || Date.now())].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
+    const pick = payload.musicFile && tracks.includes(payload.musicFile) ? payload.musicFile : tracks[h % tracks.length];
+    console.log('music:', pick);
+    const fade = `loudnorm=I=-20:TP=-2:LRA=11,afade=t=in:d=1.2,afade=t=out:st=${(total / 1000 - 1.8).toFixed(2)}:d=1.8`;
+    execSync(`"${FFMPEG}" -y -loglevel error -stream_loop -1 -i "${path.join(mdir, pick)}" -t ${secs} -af "${fade}" -c:a aac -b:a 160k "${audio}"`, { stdio: 'inherit' });
+  } else {
+    // fallback: synthesised soft pad (royalty-free)
+    const freqs = [110, 164.81, 220, 261.63, 329.63, 493.88];
+    const inputs = freqs.flatMap(f => ['-f', 'lavfi', '-t', secs, '-i', `sine=frequency=${f}:sample_rate=44100`]);
+    const mix = freqs.map((_, i) => `[${i}:a]`).join('') + `amix=inputs=${freqs.length}:normalize=0,volume=0.8,alimiter=limit=0.7,tremolo=f=0.18:d=0.5,lowpass=f=1400,aecho=0.8:0.6:420|760:0.35|0.22,afade=t=in:d=1.6,afade=t=out:st=${(total / 1000 - 1.6).toFixed(2)}:d=1.8[a]`;
+    execSync([`"${FFMPEG}"`, '-y', '-loglevel', 'error', ...inputs, '-filter_complex', `"${mix}"`, '-map', '"[a]"', '-c:a', 'aac', '-b:a', '128k', `"${audio}"`].join(' '), { stdio: 'inherit' });
+  }
 }
 
 // ---------- video ----------
