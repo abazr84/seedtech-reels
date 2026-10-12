@@ -4,6 +4,8 @@ import { spawn, execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { createRequire } from 'node:module';
+const FFMPEG = process.env.FFMPEG || (() => { try { return createRequire(import.meta.url)('ffmpeg-static'); } catch { return 'ffmpeg'; } })();
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const [,, payloadArg, outArg, ...rest] = process.argv;
@@ -47,7 +49,7 @@ if (useMusic) {
   const freqs = [110, 164.81, 220, 261.63, 329.63, 493.88];
   const inputs = freqs.flatMap(f => ['-f', 'lavfi', '-t', secs, '-i', `sine=frequency=${f}:sample_rate=44100`]);
   const mix = freqs.map((_, i) => `[${i}:a]`).join('') + `amix=inputs=${freqs.length}:normalize=0,volume=0.8,alimiter=limit=0.7,tremolo=f=0.18:d=0.5,lowpass=f=1400,aecho=0.8:0.6:420|760:0.35|0.22,afade=t=in:d=1.6,afade=t=out:st=${(total / 1000 - 1.6).toFixed(2)}:d=1.8[a]`;
-  execSync(['ffmpeg', '-y', '-loglevel', 'error', ...inputs, '-filter_complex', `"${mix}"`, '-map', '"[a]"', '-c:a', 'aac', '-b:a', '128k', `"${audio}"`].join(' '), { stdio: 'inherit' });
+  execSync([`"${FFMPEG}"`, '-y', '-loglevel', 'error', ...inputs, '-filter_complex', `"${mix}"`, '-map', '"[a]"', '-c:a', 'aac', '-b:a', '128k', `"${audio}"`].join(' '), { stdio: 'inherit' });
 }
 
 // ---------- video ----------
@@ -56,7 +58,7 @@ if (useMusic) args.push('-i', audio);
 args.push('-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-pix_fmt', 'yuv420p', '-profile:v', 'high', '-r', String(FPS), '-movflags', '+faststart');
 if (useMusic) args.push('-c:a', 'aac', '-b:a', '128k', '-shortest'); else args.push('-an');
 args.push(out);
-const ff = spawn('ffmpeg', args, { stdio: ['pipe', 'inherit', 'inherit'] });
+const ff = spawn(FFMPEG, args, { stdio: ['pipe', 'inherit', 'inherit'] });
 const done = new Promise((res, rej) => { ff.on('close', c => c === 0 ? res() : rej(new Error('ffmpeg exit ' + c))); });
 for (let i = 0; i < frames; i++) {
   await page.evaluate(ms => window.seek(ms), i * 1000 / FPS);

@@ -38,10 +38,10 @@ jobs:
           echo "$ID" | grep -Eq '^[A-Za-z0-9_-]{1,60}$' || { echo "bad id"; exit 1; }
           echo "ID=$ID" >> "$GITHUB_ENV"
       - name: Install
-        run: |
-          cd render && npm ci
-          command -v ffmpeg >/dev/null || sudo apt-get install -y ffmpeg
+        timeout-minutes: 5
+        run: cd render && npm ci --no-audit --no-fund
       - name: Render
+        timeout-minutes: 10
         run: |
           mkdir -p out
           node render/render.mjs /tmp/payload.json "out/${ID}.mp4"
