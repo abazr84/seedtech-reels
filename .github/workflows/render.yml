@@ -1,5 +1,8 @@
 name: render-reel
 on:
+  push:
+    paths:
+      - "jobs/test.json"
   workflow_dispatch:
     inputs:
       id:
@@ -22,11 +25,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Validate id
+      - name: Resolve payload
         env:
-          ID: ${{ inputs.id }}
+          IN_ID: ${{ inputs.id }}
+          IN_PAYLOAD: ${{ inputs.payload }}
         run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            printf '%s' "$IN_PAYLOAD" > /tmp/payload.json; ID="$IN_ID"
+          else
+            cp jobs/test.json /tmp/payload.json; ID=$(node -e "console.log(require('/tmp/payload.json').id)")
+          fi
           echo "$ID" | grep -Eq '^[A-Za-z0-9_-]{1,60}$' || { echo "bad id"; exit 1; }
+          echo "ID=$ID" >> "$GITHUB_ENV"
       - name: Install
         run: |
           cd render && npm ci
@@ -38,15 +48,10 @@ jobs:
             -o assets/logo.png "https://seedtech-sd.com/wp-content/uploads/2023/04/seedtech-LOGO3.png"
           file assets/logo.png
       - name: Render
-        env:
-          PAYLOAD: ${{ inputs.payload }}
-          ID: ${{ inputs.id }}
         run: |
           mkdir -p out
-          node render/render.mjs - "out/${ID}.mp4"
+          node render/render.mjs /tmp/payload.json "out/${ID}.mp4"
       - name: Commit video
-        env:
-          ID: ${{ inputs.id }}
         run: |
           git config user.name "seedtech-reels-bot"
           git config user.email "bot@users.noreply.github.com"
