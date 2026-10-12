@@ -53,8 +53,8 @@ jobs:
           ls -t out/*.mp4 | tail -n +21 | xargs -r git rm -q --cached -f || true
           ls -t out/*.mp4 | tail -n +21 | xargs -r rm -f
           # keep only the 5 newest inbox clips (needed for edit re-renders)
-          ls -t inbox/*.mp4 2>/dev/null | tail -n +6 | xargs -r git rm -q --cached -f || true
-          ls -t inbox/*.mp4 2>/dev/null | tail -n +6 | xargs -r rm -f
+          ls inbox/*.mp4 2>/dev/null | sort | head -n -5 | xargs -r git rm -q --cached -f || true
+          ls inbox/*.mp4 2>/dev/null | sort | head -n -5 | xargs -r rm -f
           git add -A out
           git commit -m "render ${ID}"
           for i in 1 2 3; do git pull --rebase origin main && git push origin HEAD:main && break || sleep 5; done
