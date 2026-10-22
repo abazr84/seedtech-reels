@@ -101,26 +101,33 @@ link('write_reel', 'build_payload');
 add('dispatch', 'n8n-nodes-base.httpRequest', 4.2, { method: 'POST', url: `https://api.github.com/repos/${REPO}/actions/workflows/render.yml/dispatches`, authentication: 'genericCredentialType', genericAuthType: 'httpHeaderAuth', sendHeaders: true, headerParameters: { parameters: [{ name: 'Accept', value: 'application/vnd.github+json' }, { name: 'User-Agent', value: 'seedtech-n8n' }, { name: 'X-GitHub-Api-Version', value: '2022-11-28' }] }, sendBody: true, contentType: 'json', specifyBody: 'json', jsonBody: "={{ JSON.stringify({ref:'main',inputs:{id:$json.id,payload:JSON.stringify($json.payload)} }) }}", options: { response: { response: { fullResponse: true, neverError: true } } } }, { credentials: GH, retryOnFail: true, maxTries: 2, waitBetweenTries: 3000 }, [1600, 300]);
 link('build_payload', 'dispatch');
 
-const WAIT = `const j=$getWorkflowStaticData('global').job;if(!j||!j.id)throw new Error('no job in progress');
+// n8n kills Code nodes after 60s, so the render wait is a loop of short checks: wait_first -> check_render -> render_done? -> (wait_more -> check_render)
+const CHECK = `const j=$getWorkflowStaticData('global').job;if(!j||!j.id)throw new Error('no job in progress');
 const d=$input.first().json;
 if(d.statusCode&&d.statusCode>=300)throw new Error('GitHub dispatch failed: '+d.statusCode+' '+JSON.stringify(d.body).slice(0,300));
-const start=Date.now()-20000;
+const n=(d.n||0)+1;
 const api='https://api.github.com/repos/${REPO}';
 const hd={'User-Agent':'seedtech-n8n',Accept:'application/vnd.github+json'};
-let found=false,fail='';
-for(let i=0;i<24;i++){
-  await new Promise(r=>setTimeout(r,i===0?25000:10000));
-  try{const r=await this.helpers.httpRequest({method:'GET',url:api+'/contents/out/'+j.id+'.mp4?ref=main&t='+Date.now(),headers:hd,json:true,timeout:15000});if(r&&r.name){found=true;break;}}catch(e){}
-  try{const rs=await this.helpers.httpRequest({method:'GET',url:api+'/actions/runs?event=workflow_dispatch&per_page=5&t='+Date.now(),headers:hd,json:true,timeout:15000});const run=(rs.workflow_runs||[]).find(x=>new Date(x.created_at).getTime()>=start);if(run&&run.status==='completed'&&run.conclusion!=='success'){fail=run.conclusion+' '+run.html_url;break;}}catch(e){}
+let found=false;
+try{const r=await this.helpers.httpRequest({method:'GET',url:api+'/contents/out/'+j.id+'.mp4?ref=main&t='+Date.now(),headers:hd,json:true,timeout:12000});if(r&&r.name)found=true;}catch(e){}
+if(!found){
+  try{const rs=await this.helpers.httpRequest({method:'GET',url:api+'/actions/runs?event=workflow_dispatch&per_page=5&t='+Date.now(),headers:hd,json:true,timeout:12000});const run=(rs.workflow_runs||[]).find(x=>new Date(x.created_at).getTime()>=(j.ts||0)-20000);if(run&&run.status==='completed'&&run.conclusion!=='success')throw new Error('Render failed: '+run.conclusion+' '+run.html_url);}catch(e){if(/^Render failed/.test(String(e.message)))throw e;}
+  if(n>=32)throw new Error('Render timed out for '+j.id);
 }
-if(fail)throw new Error('Render failed: '+fail);
-if(!found)throw new Error('Render timed out for '+j.id);
+return [{json:{done:found,n}}];`;
+const FINAL = `const j=$getWorkflowStaticData('global').job;if(!j||!j.id)throw new Error('no job in progress');
 const url='https://raw.githubusercontent.com/${REPO}/main/out/'+j.id+'.mp4';
 const sd=$getWorkflowStaticData('global');
 sd.pending=Object.assign({},sd.job,{url});sd.job=null;
 return [{json:{id:j.id,url,name:j.name,caption:sd.pending.caption}}];`;
-code('wait_render', WAIT, [1860, 300]);
-link('dispatch', 'wait_render');
+const wait = (name, pos, sec) => add(name, 'n8n-nodes-base.wait', 1.1, { resume: 'timeInterval', amount: sec, unit: 'seconds' }, { webhookId: crypto.randomUUID() }, pos);
+wait('wait_first', [1340 + 520, 300], 40);
+code('check_render', CHECK, [1860 + 260, 300]);
+add('render_done?', 'n8n-nodes-base.if', 2, { conditions: { options: { caseSensitive: true, leftValue: '', typeValidation: 'strict' }, conditions: [{ id: crypto.randomUUID(), leftValue: '={{ $json.done }}', rightValue: true, operator: { type: 'boolean', operation: 'true', singleValue: true } }], combinator: 'and' }, options: {} }, {}, [1860 + 460, 300]);
+wait('wait_more', [1860 + 460, 520], 20);
+code('wait_render', FINAL, [1860 + 660, 300]);
+link('dispatch', 'wait_first'); link('wait_first', 'check_render'); link('check_render', 'render_done?');
+link('render_done?', 'wait_render', 0); link('render_done?', 'wait_more', 1); link('wait_more', 'check_render');
 
 evo('send_video', 'sendMedia', "{number:'" + ADMIN + "',mediatype:'video',mimetype:'video/mp4',fileName:$json.id+'.mp4',media:$json.url,caption:'🎬 ريل مقترح: '+$json.name}", [2120, 300]);
 link('wait_render', 'send_video');
